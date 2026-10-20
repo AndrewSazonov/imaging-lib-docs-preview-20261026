@@ -3,11 +3,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
-from typing import Dict
-from typing import List
-from typing import Sequence
-from typing import Tuple
 
 import scipp as sc
 from easyscience.base_classes import NewBase
@@ -17,11 +14,11 @@ from scipp import UnitError
 class RectangleROI(NewBase):
     """Object representing a rectangular region of interest (ROI) in an image.
 
-    This object is most simply created by the [`roi_creator`][...Measurement.roi_creator] method in the
-      [Measurement][...Measurement] class. Alternatively it can be created manually as shown in the example below.
+    This object is most simply created by the [`roi_creator`][....Measurement.roi_creator] method in the
+      [Measurement][....Measurement] class. Alternatively it can be created manually as shown in the example below.
 
     Physical coordinate ranges are used by default, if they are provided **and** can be used in the
-      associated [Measurement][...Measurement] class.
+      associated [Measurement][....Measurement] class.
     Otherwise, the obligatory pixel coordinate ranges are used as a fallback.
 
     Example
@@ -171,22 +168,22 @@ class RectangleROI(NewBase):
         else:
             raise ValueError('Cannot delete physical coordinate ranges because they are not set.')
 
-    def pixel_slice(self) -> Tuple[slice, slice]:
+    def pixel_slice(self) -> tuple[slice, slice]:
         """Get a pixel index slice object corresponding to the ROI.
 
         Returns
         -------
-        tuple
+        tuple[slice, slice]
             Two (x,y) slice objects representing the pixel ranges of the ROI.
         """
         return slice(self._x_pixel_start, self._x_pixel_end), slice(self._y_pixel_start, self._y_pixel_end)
 
-    def slice(self) -> Tuple[slice, slice]:
+    def slice(self) -> tuple[slice, slice]:
         """Get a physical coordinate slice object corresponding to the ROI.
 
         Returns
         -------
-        tuple
+        tuple[slice, slice]
             Two (x,y) slice objects representing the physical coordinate ranges of the ROI.
 
         Raises
@@ -466,6 +463,73 @@ class RectangleROI(NewBase):
         self._check_scalar(value, 'y_end')
         self._y_end = value
 
+    @property
+    def unique_name(self) -> str:
+        """
+        The unique identifier of the rectangular ROI object.
+
+        Parameters
+        ----------
+        value : str
+            The new unique name for the [RectangleROI][..] object.
+
+        Returns
+        -------
+        str
+            The current unique name of the [rectangular ROI][..].
+
+        Raises
+        ------
+        TypeError
+            If ``value`` is not a string.
+        ValueError
+            If the new unique name is already in use.
+
+        Notes
+        -----
+        Setting a new unique name does not free up the old name.
+        """
+        return super().unique_name
+
+    @unique_name.setter
+    # Setters have no docstrings. They should be written in the getter docstring instead.
+    def unique_name(self, value: str):
+        super(RectangleROI, type(self)).unique_name.fset(self, value)
+
+    @property
+    def display_name(self) -> str:
+        """
+        The pretty display name of the rectangular ROI object.
+
+        This name is used when the object is displayed in user interfaces and reports.
+
+        Parameters
+        ----------
+        value : str | None
+            The new display name for the [RectangleROI][..] object.
+
+        Returns
+        -------
+        str
+            The current display name of the [rectangular ROI][..].
+
+        Raises
+        ------
+        TypeError
+            If ``value`` is not a string or ``None``.
+
+        Notes
+        -----
+        If it has not been set, the [unique name][..unique_name] of the [RectangleROI][..] object
+        will be used as its display name.
+        """
+        return super().display_name
+
+    @display_name.setter
+    # Setters have no docstrings. They should be written in the getter docstring instead.
+    def display_name(self, value: str):
+        super(RectangleROI, type(self)).display_name.fset(self, value)
+
     def _check_input_sequence(self, value: Sequence, name: str, typename: str, expected_type: any) -> None:
         """Validate that ``value`` is a two-element sequence of the expected type.
 
@@ -569,7 +633,7 @@ class RectangleROI(NewBase):
                 'Please use the set_physical_coord_range method.'
             )
 
-    def to_dict(self, skip: List[str] | None = None) -> Dict[str, Any]:
+    def to_dict(self, skip: list[str] | None = None) -> dict[str, Any]:
         """Convert the ROI instance to a dictionary representation.
 
         Used for saving the ROI to file.
@@ -579,14 +643,20 @@ class RectangleROI(NewBase):
         skip : list[str] | None
             A list of attribute names to exclude from the output dictionary.<br>
             The ``'x_pixel_range'``, ``'y_pixel_range'``, ``'x_range'``, and
-            ``'y_range'`` keys are always handled explicitly and appended
-            regardless of this parameter.
+            ``'y_range'`` keys cannot be excluded.
 
         Returns
         -------
         dict
             A dictionary containing the serialised ROI data, including pixel ranges
             and, if available, physical coordinate ranges encoded as scipp scalar dicts.
+
+        Notes
+        -----
+        A [unique_name][..unique_name] that was generated automatically is not
+        written to the dictionary; only an explicitly supplied one is, so that a
+        deserialized object gets a fresh name instead of clashing with an existing one.
+        Likewise [display_name][..display_name] is omitted when it has not been set.
         """
         if skip is None:
             skip = []
@@ -629,19 +699,23 @@ class RectangleROI(NewBase):
         return out_dict
 
     @classmethod
-    def from_dict(cls, input_dict: Dict[str, Any]) -> RectangleROI:
-        """Create a [`RectangleROI`][..] instance from a dictionary representation.
+    def from_dict(cls, input_dict: dict[str, Any]) -> RectangleROI:
+        """Recreate the RectangleROI object from its dictionary representation created with the [to_dict][to_dict] method.
 
         Parameters
         ----------
         input_dict : dict
-            A dictionary in a format as produced by [`to_dict`][..to_dict], containing at minimum
-            ``'x_pixel_range'`` and ``'y_pixel_range'`` keys.
+            A dictionary representation of the [RectangleROI][..] object.
 
         Returns
         -------
         RectangleROI
-            A new [`RectangleROI`][..] instance initialised with the data from the dictionary.
+            An instance of the [RectangleROI][..] object recreated from the dictionary.
+
+        Raises
+        ------
+        ValueError
+            If the dictionary does not represent a serialized [RectangleROI][..] object.
         """
         temp_dict = input_dict.copy()
         if 'x_range' in input_dict and 'y_range' in input_dict:
@@ -666,3 +740,17 @@ class RectangleROI(NewBase):
             repr_str += f', x_range=({self._x_start}, {self._x_end}), y_range=({self._y_start}, {self._y_end})'
         repr_str += ')'
         return repr_str
+
+    def __copy__(self) -> RectangleROI:
+        """Create a deep copy of the RectangleROI object.
+
+        Notes
+        -----
+        This uses the [to_dict][to_dict] and [from_dict][from_dict] methods to create the deep copy.
+
+        Returns
+        -------
+        RectangleROI
+            A deep copy of the RectangleROI object.
+        """
+        return super().__copy__()

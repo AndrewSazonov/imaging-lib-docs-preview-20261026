@@ -3,14 +3,17 @@
 
 from __future__ import annotations
 
+import numbers
 import warnings
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import ess.imaging as essimaging
 import numpy as np
 import plopp as pp
 import scipp as sc
+from easyscience import global_object
 from easyscience.base_classes import EasyList
 from easyscience.base_classes import NewBase
 from scipp import DimensionError
@@ -22,8 +25,6 @@ from scitiff.io import ImageJMetadataNotFoundWarning
 from ..regions_of_interest import RectangleROI
 from ..utils import _is_notebook
 from ..utils import _to_edges
-
-Numeric = int | float
 
 
 class Measurement(NewBase):
@@ -352,10 +353,6 @@ class Measurement(NewBase):
     def save_scitiff(self, filename: str | Path) -> None:
         """Save the `Measurement` data to a **SciTiff** file with the time-of-flight values and other provided metadata.
 
-        Note that [SciTiff](https://scipp.github.io/scitiff/) does not support ``float64`` precision numbers, so if the
-         [`Measurement`][..] contains data of type ``float64``, it will be downcast to ``float32`` when saving, causing a small
-          loss of precision.
-
         Parameters
         ----------
         filename : str | Path
@@ -368,19 +365,20 @@ class Measurement(NewBase):
         RuntimeError
             If the file cannot be written to the specified ``filename`` path.
 
-        Warns
+        Warnings
         -----
-        UserWarning
-            If the [Measurement][..] object's data is of type ``float64``; It will be downcast to ``float32``.
+        [SciTiff](https://scipp.github.io/scitiff/) does not support ``float64`` precision numbers, so if the
+         [`Measurement`][..] contains data of type ``float64``, it will be downcast to ``float32`` when saving, causing a small
+          loss of precision.
         """
         if not isinstance(filename, (str, Path)):
             raise TypeError('filename must be a string or Path object.')
         try:
             nan_mask = self._data_array.masks.pop('non_finite')
             if str(self._data_array.dtype) == 'float64':
-                warnings.warn(
+                global_object.log.warning(
                     'The data array is of type float64, which is not directly supported by the SciTIFF format. '
-                    'It will be downcast to float32 when saving, which may result in loss of precision. '
+                    'It will be downcast to float32 when saving, which may result in loss of precision.'
                 )
                 save_scitiff(self._data_array.astype('float32'), filename)
             else:
@@ -443,6 +441,49 @@ class Measurement(NewBase):
             Always.
         """
         raise AttributeError('Cannot set _data_array, it is a read-only property.')
+
+    @property
+    def time_of_flights(self) -> sc.Variable:
+        """The time-of-flight values of the measurement.
+
+        Parameters
+        ----------
+        value : sc.Variable | np.ndarray
+            The new time-of-flight values to set.<br>
+            If a numpy array is provided, the unit is assumed to be seconds.
+
+        Returns
+        -------
+        sc.Variable
+            A copy of the time-of-flight values as a [`sc.Variable`][scipp.Variable].
+
+        Raises
+        ------
+        ValueError
+            If ``value`` is not 1-dimensional with the same length as the number of frames.<br>
+            If any element in ``value`` is negative.
+        TypeError
+            If ``value`` is not a [`sc.Variable`][scipp.Variable] or [`np.ndarray`][numpy.ndarray].
+        UnitError
+            If ``value`` is a [`sc.Variable`][scipp.Variable] and does not have a unit of time.
+        """
+        return self._data_array.coords['tof'].copy()
+
+    @time_of_flights.setter
+    def time_of_flights(self, value: sc.Variable | np.ndarray) -> None:
+        # Setters have no docstrings. They should be written in the getter docstring instead.
+        value = self._validate_provided_coord(
+            data_array=self._data_array,
+            coord=value,
+            coord_name='time_of_flights',
+            dim='t',
+            length_context='frames in the measurement',
+            expected_dim_string='time',
+            expected_unit='s',
+        )
+        if any(value.to(unit='s') < sc.scalar(0, unit='s')):
+            raise ValueError('time_of_flight values must be non-negative.')
+        self._data_array.coords['tof'] = value
 
     @property
     def x_positions(self) -> sc.Variable:
@@ -608,54 +649,11 @@ class Measurement(NewBase):
             raise ValueError('Cannot delete physical coordinate positions because they are not set.')
 
     @property
-    def time_of_flights(self) -> sc.Variable:
-        """The time-of-flight values of the measurement.
-
-        Parameters
-        ----------
-        value : sc.Variable | np.ndarray
-            The new time-of-flight values to set.<br>
-            If a numpy array is provided, the unit is assumed to be seconds.
-
-        Returns
-        -------
-        sc.Variable
-            A copy of the time-of-flight values as a [`sc.Variable`][scipp.Variable].
-
-        Raises
-        ------
-        ValueError
-            If ``value`` is not 1-dimensional with the same length as the number of frames.<br>
-            If any element in ``value`` is negative.
-        TypeError
-            If ``value`` is not a [`sc.Variable`][scipp.Variable] or [`np.ndarray`][numpy.ndarray].
-        UnitError
-            If ``value`` is a [`sc.Variable`][scipp.Variable] and does not have a unit of time.
-        """
-        return self._data_array.coords['tof'].copy()
-
-    @time_of_flights.setter
-    def time_of_flights(self, value: sc.Variable | np.ndarray) -> None:
-        # Setters have no docstrings. They should be written in the getter docstring instead.
-        value = self._validate_provided_coord(
-            data_array=self._data_array,
-            coord=value,
-            coord_name='time_of_flights',
-            dim='t',
-            length_context='frames in the measurement',
-            expected_dim_string='time',
-            expected_unit='s',
-        )
-        if any(value.to(unit='s') < sc.scalar(0, unit='s')):
-            raise ValueError('time_of_flight values must be non-negative.')
-        self._data_array.coords['tof'] = value
-
-    @property
     def regions_of_interest(self) -> EasyList[RectangleROI]:
         """The list of regions of interest (ROIs) defined for this measurement.<br> This attribute is **read-only**.
 
         The returned list is an [EasyList][easyscience.base_classes.EasyList] of
-         [regions of interest][...regions_of_interest.RectangleROI] objects.
+         [regions of interest][.....regions_of_interest.RectangleROI] objects.
         To modify the list or set new ROIs, interact directly with the returned list.
 
         Example
@@ -687,7 +685,74 @@ class Measurement(NewBase):
     #         'Please simply add or remove ROIs directly from the list.'
     #     )
 
-    def rebin(self, dimensions: dict[str, Numeric]) -> None:
+    @property
+    def unique_name(self) -> str:
+        """
+        The unique identifier of the measurement object.
+
+        Parameters
+        ----------
+        value : str
+            The new unique name for the [measurement][..] object.
+
+        Returns
+        -------
+        str
+            The current unique name of the [measurement][..].
+
+        Raises
+        ------
+        TypeError
+            If ``value`` is not a string.
+        ValueError
+            If the new unique name is already in use.
+
+        Notes
+        -----
+        Setting a new unique name does not free up the old name.
+        """
+        return super().unique_name
+
+    @unique_name.setter
+    # Setters have no docstrings. They should be written in the getter docstring instead.
+    def unique_name(self, value: str):
+        super(Measurement, type(self)).unique_name.fset(self, value)
+
+    @property
+    def display_name(self) -> str:
+        """
+        The pretty display name of the measurement object.
+
+        This name is used when the object is displayed in user interfaces and reports.
+
+        Parameters
+        ----------
+        value : str | None
+            The new display name for the [measurement][..] object.
+
+        Returns
+        -------
+        str
+            The current display name of the [measurement][..].
+
+        Raises
+        ------
+        TypeError
+            If ``value`` is not a string or ``None``.
+
+        Notes
+        -----
+        If it has not been set, the [unique name][..unique_name] of the [measurement][..] object
+        will be used as its display name.
+        """
+        return super().display_name
+
+    @display_name.setter
+    # Setters have no docstrings. They should be written in the getter docstring instead.
+    def display_name(self, value: str):
+        super(Measurement, type(self)).display_name.fset(self, value)
+
+    def rebin(self, dimensions: dict[str, numbers.Real]) -> None:
         """Rebin the measurement image stack.
 
         This operation increases the signal-to-noise ratio of the [Measurement][..] data, at the cost of a reduced resolution,
@@ -747,7 +812,7 @@ class Measurement(NewBase):
         """
         if not isinstance(dimensions, dict):
             raise TypeError('dimensions must be a dictionary mapping dimension names to rebin factors.')
-        if all(isinstance(value, Numeric) and value == 1 for value in dimensions.values()):  # Reverts to original data
+        if all(isinstance(value, numbers.Real) and value == 1 for value in dimensions.values()):  # Reverts to original data
             # self.revert_rebin() # If we want secondary rebins to work on the original data
             return
         sizes = dimensions.copy()
@@ -778,20 +843,12 @@ class Measurement(NewBase):
     def revert_rebin(self) -> None:
         """Revert any rebinning applied to the measurement data, restoring it to its original resolution.
 
-        This method undos the rebinning performed by the [rebin][..rebin] method, if it has been applied.
-
-        Warns
-        ------
-        UserWarning
-            If no rebinning has been applied and the measurement data is already in its original state.
+        This method undoes the rebinning performed by the [rebin][..rebin] method, if it has been applied.
         """
         if hasattr(self, '_rebinned_data_array'):
             del self._rebinned_data_array
         else:
-            warnings.warn(
-                'No rebinning to revert. The data array is already in its original state.',
-                UserWarning,
-            )
+            global_object.log.warning('No rebinning to revert. The data array is already in its original state.')
 
     # -------------------------------------------------------------------------------------------------------------------------
     # ----------------------------------------- Plotting methods --------------------------------------------------------------
@@ -1428,3 +1485,62 @@ class Measurement(NewBase):
             display names of all associated regions of interest.
         """
         return f'{self.display_name} with shape {self._data_array.shape} and regions of interest: {[roi.display_name for roi in self.regions_of_interest]}'  # noqa: E501
+
+    def to_dict(self, skip: list[str] | None = None) -> dict[str, Any]:
+        """Convert the measurement object to a dictionary representation.
+
+        Used for saving the measurement to file.
+
+        Parameters
+        ----------
+        skip : List[str] | None
+            A list of attribute names to exclude from the output dictionary.
+
+        Returns
+        -------
+        Dict[str, Any]
+            A dictionary representation of the [Measurement][..] object.
+
+        Notes
+        -----
+        A [unique_name][..unique_name] that was generated automatically is not
+        written to the dictionary; only an explicitly supplied one is, so that a
+        deserialized object gets a fresh name instead of clashing with an existing one.
+        Likewise [display_name][..display_name] is omitted when it has not been set.
+        """
+        return super().to_dict(skip=skip)
+
+    @classmethod
+    def from_dict(cls, obj_dict: dict[str, Any]) -> Measurement:
+        """Recreate the measurement object from its dictionary representation created with the [to_dict][to_dict] method.
+
+        Parameters
+        ----------
+        obj_dict : dict
+            A dictionary representation of the [Measurement][..] object.
+
+        Returns
+        -------
+        Measurement
+            An instance of the [Measurement][..] object recreated from the dictionary.
+
+        Raises
+        ------
+        ValueError
+            If the dictionary does not represent a serialized [Measurement][..] object.
+        """
+        return super().from_dict(obj_dict)
+
+    def __copy__(self) -> Measurement:
+        """Create a deep copy of the measurement object.
+
+        Notes
+        -----
+        This uses the [to_dict][to_dict] and [from_dict][from_dict] methods to create the deep copy.
+
+        Returns
+        -------
+        Measurement
+            A deep copy of the measurement object.
+        """
+        return super().__copy__()
