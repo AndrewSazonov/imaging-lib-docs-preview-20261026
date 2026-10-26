@@ -1,15 +1,4 @@
-# This workflow builds and deploys documentation for the project.
-#
-# Overview:
-#  - Converts tutorial Python scripts to Jupyter notebooks and executes them.
-#  - Builds the documentation site using MkDocs with the Material theme.
-#  - Uploads the built site as an artifact for local inspection.
-#  - Deploys versioned documentation to the gh-pages branch using Mike:
-#    - For release tags (v*): deploys to a versioned folder (e.g., /0.9.1/) and updates /latest/.
-#    - For branches: deploys to /dev/.
-#
-# The action summary page will contain a link to the built artifact for downloading
-# and inspecting, as well as a link to the deployed documentation site.
+# Build static notebook documentation and publish the temporary preview.
 
 name: Docs build and deployment
 
@@ -17,13 +6,7 @@ on:
   # Trigger the workflow on push
   push:
     # Selected branches
-    branches: [develop] # master and main are already verified in PR
-    # Runs on creating a new tag starting with 'v', e.g. 'v1.0.3'
-    tags: ['v*']
-  # Trigger the workflow on pull request
-  pull_request:
-    # Selected branches
-    branches: [master, main, develop]
+    branches: [fix-docs-static-plots]
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -55,12 +38,17 @@ env:
 
 jobs:
   # Single job that builds and deploys documentation.
-  # Uses macOS runner for consistent Plotly chart rendering.
   build-deploy-docs:
-    runs-on: ubuntu-latest # macos-latest
+    runs-on: ubuntu-latest
 
     permissions:
-      contents: write # Required for pushing to the gh-pages branch
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       # Setting DOCS_VERSION to be used in mkdocs.yml, and then in the
@@ -141,54 +129,14 @@ jobs:
           name: site-local_easyimaging-lib-${{ env.RELEASE_VERSION }}
           path: docs/site/
 
-      # Create GitHub App token for pushing to gh-pages as easyscience[bot].
-      - name: Setup easyscience[bot]
-        id: bot
-        uses: ./.github/actions/setup-easyscience-bot
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
         with:
-          app-id: ${{ vars.EASYSCIENCE_APP_ID }}
-          private-key: ${{ secrets.EASYSCIENCE_APP_KEY }}
+          path: docs/site/
 
-      # Configure git identity and remote URL so mike pushes as easyscience[bot].
-      - name: Configure git for pushing
-        run: |
-          set -euo pipefail
-          git config user.name "easyscience[bot]"
-          git config user.email "${{ vars.EASYSCIENCE_APP_ID }}+easyscience[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${{ steps.bot.outputs.token }}@github.com/${{ github.repository }}.git"
-
-      # Fetch the gh-pages branch to ensure mike has the latest remote state.
-      # This is required because the checkout step only fetches the source branch,
-      # not the gh-pages branch that mike needs to update.
-      - name: Fetch gh-pages branch
-        run: |
-          git fetch origin gh-pages:gh-pages 2>/dev/null || true
-
-      # Deploy versioned documentation using mike (MkDocs plugin for versioning).
-      # - For release tags (v*): deploys to versioned folder (e.g., /0.9.1/) and aliases to /latest/.
-      # - For branches: deploys to /dev/.
-      # The "${RELEASE_VERSION#v}" syntax strips the 'v' prefix (v0.9.1 -> 0.9.1).
-      # Also sets 'latest' as the default version for the version selector.
-      - name: Rebuild and deploy docs with mike
-        run: |
-          # Exit on error (-e), undefined vars (-u), and pipeline failures (pipefail)
-          set -euo pipefail
-
-          REPO_NAME="${{ github.event.repository.name }}"
-          BASE_URL="https://easyscience.github.io/${REPO_NAME}"
-
-          # Deploy the release version and update the "latest" alias
-          if [[ "${IS_RELEASE_TAG}" == "true" ]]; then
-            pixi run docs-deploy-pre "${RELEASE_VERSION#v}" latest
-            pixi run docs-set-default-pre latest
-            DEPLOYMENT_URL="${BASE_URL}/latest"
-
-          # Deploy/update the "dev" alias (or whatever your convention is)
-          else
-            pixi run docs-deploy-pre dev
-            DEPLOYMENT_URL="${BASE_URL}/dev"
-
-          fi
-
-          # Add links to the action summary page for easy access
-          echo "🔗 deployment url [${DEPLOYMENT_URL}](${DEPLOYMENT_URL})" >> "${GITHUB_STEP_SUMMARY}"
+      - name: Publish documentation preview
+        id: deployment
+        uses: actions/deploy-pages@v4

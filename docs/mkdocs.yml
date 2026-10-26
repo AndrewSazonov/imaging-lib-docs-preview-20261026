@@ -1,10 +1,10 @@
 # Project information
 site_name: EasyImaging Library
-site_url: https://easyscience.github.io/imaging-lib
+site_url: https://andrewsazonov.github.io/imaging-lib-docs-preview-20261026/
 
 # Repository
-repo_url: https://github.com/easyscience/imaging-lib
-edit_uri: edit/develop/docs/
+repo_url: https://github.com/AndrewSazonov/imaging-lib-docs-preview-20261026
+edit_uri: edit/fix-docs-static-plots/docs/
 
 # Copyright
 copyright: © 2024-2026 EasyImaging
@@ -77,10 +77,6 @@ extra:
     release_version: !ENV RELEASE_VERSION
     docs_version: !ENV DOCS_VERSION
     notebooks_dir: !ENV NOTEBOOKS_DIR
-  # Renders a version selector in the header
-  version:
-    provider: mike
-
 # Customization to be included by the theme
 extra_css:
   - assets/stylesheets/extra.css
