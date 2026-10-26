@@ -103,9 +103,6 @@ jobs:
       - name: Prepare notebooks
         run: pixi run notebook-prepare
 
-      - name: Add static plot setup cell
-        run: pixi run notebook-docs-prepare
-
       # Execute all Jupyter notebooks to generate output cells (plots, tables, etc.).
       # Uses multiple cores for parallel execution to speed up the process.
       - name: Run notebooks
